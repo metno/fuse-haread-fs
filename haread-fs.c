@@ -197,7 +197,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
         {
             // The call to lstat timed out
             DEBUG("Timeout on  %s\n", Currfs);
-            pthread_cancel(thread_id);
+           
             continue;
         }
 
@@ -206,7 +206,6 @@ static int callback_getattr(const char *path, struct stat *st_data)
 
         if (res == 0)
         {
-            pthread_cancel(thread_id);
             return 0;
         }
     }
@@ -290,7 +289,6 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
         // The call to opendir timed out
         DEBUG("Call to opendir(%s) timed out\n", ipath);
         free(ipath);
-        pthread_cancel(thread_id);
         return ETIMEDOUT;
     }
 
@@ -298,7 +296,6 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
 
     if (args.dp == NULL)
     {
-        pthread_cancel(thread_id);
         return args.res;
     }
 
@@ -318,7 +315,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
     }
 
     closedir(args.dp);
-    pthread_cancel(thread_id);
+    
     return 0;
 }
 
@@ -470,7 +467,7 @@ void *thread_open(void *arguments)
 static int callback_open(const char *path, struct fuse_file_info *finfo)
 {
     int res;
-    //DEBUG("CALLLBACK_OPEN %s", "sd");
+    
 
     int flags = finfo->flags;
 
@@ -481,6 +478,7 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
 
     char *ipath;
     ipath = translate_path(path);
+    //DEBUG("CALLLBACK_OPEN %s\n", ipath);
 
     pthread_t thread_id;
     arg_struct_open args;
@@ -496,7 +494,6 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
     if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
     {
         free(ipath);
-        pthread_cancel(thread_id);
         return -ETIMEDOUT;
     }
 
@@ -506,59 +503,76 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
 
     if (res == -1)
     {
-        pthread_cancel(thread_id);
         return -args.errnum;
     }
 
     close(res);
-    pthread_cancel(thread_id);
     return 0;
-}
-
-
-typedef struct arg_struct_read
-{
-    char *path;
-    int flags;
-    int res;
-    int errnum;
-
-} arg_struct_read;
-
-void *thread_read(void *arguments)
-{
-    arg_struct_read *args = (arg_struct_read *)arguments;
-    args->res = open(args->path, args->flags);
-    if (args->res == -1)
-    {
-        args->errnum = errno;
-    }
-    return NULL;
 }
 
 static int callback_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *finfo)
 {
-    int fd;
+
     int res;
     (void)finfo;
     char *ipath;
-    //DEBUG("CALLLBACK_READ %s\n", "");
+    
+    arg_struct_open args;
 
-    ipath = translate_path(path);
-    fd = open(ipath, O_RDONLY);
-    free(ipath);
-    if (fd == -1)
+    for (int i = 0; i < Fscount; i++) // Try open .
     {
-        res = -errno;
-        return res;
-    }
-    res = pread(fd, buf, size, offset);
+        Currfs = Fss[i];
+        int fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
+        if (fs_status == 0)
+        {
+            continue;
+        }
 
+        pthread_t thread_id;
+        ipath = translate_path(path);
+        args.path = ipath;
+        args.flags = O_RDONLY;
+
+       
+        //DEBUG("CALLLBACK_READ %s\n", ipath);
+
+        pthread_create(&thread_id, NULL, thread_open, &args);
+
+        struct timespec timeout;
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 5;
+
+        if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
+        {
+            DEBUG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
+            free(ipath);
+            continue;
+        }
+        free(ipath);
+        if (args.res != -1  ) {
+            break;
+        }
+        if ( args.res == -1 && args.errnum == ENOENT) {
+            continue; // Try next fs
+        } else if ( args.res == -1 && args.errnum != ENOENT) {
+            return - args.errnum;
+        }
+    }
+
+    if (args.res == -1)
+    {
+        return -args.errnum;
+    }
+
+ 
+    res = pread(args.res, buf, size, offset);
+   
+    
     if (res == -1)
     {
-        res = -errno;
+        return -errno;
     }
-    close(fd);
+    close(args.res);
     return res;
 }
 
@@ -606,11 +620,11 @@ static int callback_fsync(const char *path, int crap, struct fuse_file_info *fin
 static int callback_access(const char *path, int mode)
 
 {
-    DEBUG("CALLLBACK_ACCESS %s", "sd");
+    
     int res;
     char *ipath;
     ipath = translate_path(path);
-
+    DEBUG("CALLLBACK_ACCESS %s\n", ipath);
     if (mode & W_OK)
     {
         return -EROFS;
@@ -797,7 +811,7 @@ void *check_if_filesystem_blocks(void *fsno)
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
 
-            //DEBUG("Call to opendir(%s) timed out\n", Fss[currfs]);
+            DEBUG("Call to opendir(%s) timed out\n", Fss[currfs]);
             insert_to_hash_table(FSOkMap, args.path, 0);
         }
         else

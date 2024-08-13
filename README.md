@@ -16,7 +16,9 @@ fuse-haread-fs is a union mount filesystem implementation for Linux. It combines
 
 It behaves like  [OverlayFS](https://github.com/containers/fuse-overlayfs) or [UnionFS](https://github.com/rpodgorny/unionfs-fuse), except it supports NFS and CIFS as underlying filesystems, which OverlayFS does not. It will not block, unlike UnionFS, if one underlying file system blocks (for example, if the NFS server is down). If a file system blocks, users still have access to files on the remaining system, if it is online. Another distinction is that haread-fs is a read-only file system.
 
-## Installation
+## Compile
+`sudo apt-get install libglib2.0-dev libfuse-dev`
+
 `make`
 
 ## Usage example

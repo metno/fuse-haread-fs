@@ -9,4 +9,4 @@
 # /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
 #
 
-/tmp/nfs *(sync,sync,ro,no_subtree_check,fsid=0468884e-fdab-11e9-8ee6-4b007bc13e45)
+/tmp/nfs *(sync,sync,ro,no_subtree_check,fsid=d3bebea7-37d6-46a6-8da9-f3e01328f0f3)
