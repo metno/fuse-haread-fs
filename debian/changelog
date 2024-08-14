@@ -1,0 +1,6 @@
+fuse-haread-fs (0.0.1-1) UNRELEASED; urgency=low
+
+  * Initial release. Closes: #nnnn
+    <nnnn is the bug number of your ITP>
+
+ -- espenm <>  Wed, 14 Aug 2024 14:00:22 +0200

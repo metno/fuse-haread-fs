@@ -1,20 +1,27 @@
-# You can change the PREFIX when installing by running make install PREFIX=/your/path where /your/path is your desired installation path.
+prefix = /usr/
 
-CC = gcc
 CFLAGS = -Wall -ansi -W -std=gnu99 -g -ggdb -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -fno-stack-protector -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include 
 LIBS = -lfuse -lglib-2.0
-TARGET = haread-fs
-SOURCE =  haread-fs.c
-PREFIX = /usr/local
 
-all: $(TARGET)
+all: haread-fs
 
-$(TARGET): $(SOURCE) 
-	$(CC) -o $(TARGET) $(SOURCE)  $(CFLAGS)  $(LIBS)
+haread-fs: haread-fs.c
+		@echo "CFLAGS=$(CFLAGS)" | \
+				fold -s -w 70 | \
+				sed -e 's/^/# /'
+		$(CC) -o haread-fs haread-fs.c $(CPPFLAGS) $(CFLAGS) $(LDCFLAGS)  $(LIBS)
 
-install:
-	install -d $(PREFIX)/bin/
-	install -m 755 $(TARGET) $(PREFIX)/bin/
+install: haread-fs
+		install -D haread-fs \
+				$(DESTDIR)$(prefix)/bin/haread-fs
 
 clean:
-	rm -f $(TARGET)
+		-rm -f haread-fs
+
+distclean: clean
+
+uninstall:
+		-rm -f $(DESTDIR)$(prefix)/bin/haread-fs
+
+.PHONY: all install clean distclean uninstall
+
