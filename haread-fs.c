@@ -161,12 +161,13 @@ void *thread_lstat(void *arguments)
 
 static int callback_getattr(const char *path, struct stat *st_data)
 {
-    //DEBUG("CALLLBACK_GETATRR %s\n", "sd");
+    DEBUG("CALLLBACK_GETATRR %s\n", "sd");
 
     int res;
     char *ipath = NULL;
     arg_struct_lstat args;
 
+    int all_timed_out = 1;
     for (int i = 0; i < Fscount; i++)
     {
         Currfs = Fss[i];
@@ -200,7 +201,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
            
             continue;
         }
-
+        all_timed_out = 0;
         res = args.res;
         free(ipath);
 
@@ -208,6 +209,10 @@ static int callback_getattr(const char *path, struct stat *st_data)
         {
             return 0;
         }
+    }
+
+    if  (all_timed_out ) {
+        return - ETIMEDOUT;
     }
     if (res == -1)
     {
@@ -466,8 +471,6 @@ void *thread_open(void *arguments)
 
 static int callback_open(const char *path, struct fuse_file_info *finfo)
 {
-    int res;
-    
 
     int flags = finfo->flags;
 
@@ -475,38 +478,47 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
     {
         return -EROFS;
     }
+   
+    DEBUG("CALLLBACK_OPEN %s\n", path);
 
-    char *ipath;
-    ipath = translate_path(path);
-    //DEBUG("CALLLBACK_OPEN %s\n", ipath);
-
-    pthread_t thread_id;
     arg_struct_open args;
-    args.path = ipath;
-    args.flags = flags;
-
-    pthread_create(&thread_id, NULL, thread_open, &args);
-
-    struct timespec timeout;
-    clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 5;
-
-    if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
+    int all_timed_out = 1;
+    for (int i = 0; i < Fscount; i++) // Try open .
     {
+        Currfs = Fss[i];
+        char *ipath = translate_path(path);
+        pthread_t thread_id;
+        args.path = ipath;
+        args.flags = flags;
+        pthread_create(&thread_id, NULL, thread_open, &args);
+
+        struct timespec timeout;
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 5;
+
+        if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
+        {
+            DEBUG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
+            free(ipath);
+            continue;
+        }
+        all_timed_out = 0;
         free(ipath);
+
+        if (args.res != -1  ) {
+            close(args.res);
+            break;
+        }
+        if ( args.res == -1 && args.errnum == ENOENT) {
+            continue; // Try next fs
+        } else if ( args.res == -1 && args.errnum != ENOENT) {
+            return - args.errnum;
+        }    
+    }
+
+    if (all_timed_out) {
         return -ETIMEDOUT;
     }
-
-    res = args.res;
-
-    free(ipath);
-
-    if (res == -1)
-    {
-        return -args.errnum;
-    }
-
-    close(res);
     return 0;
 }
 
@@ -566,13 +578,13 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
 
  
     res = pread(args.res, buf, size, offset);
-   
+    close(args.res);
     
     if (res == -1)
     {
         return -errno;
     }
-    close(args.res);
+   
     return res;
 }
 
@@ -656,7 +668,7 @@ static int callback_setxattr(const char *path, const char *name, const char *val
  */
 static int callback_getxattr(const char *path, const char *name, char *value, size_t size)
 {
-    //DEBUG("CALLLBACK_GETXATTR %s\n", "sd");
+    DEBUG("CALLLBACK_GETXATTR %s\n", "sd");
     int res;
     char *ipath;
 
@@ -797,7 +809,7 @@ void *check_if_filesystem_blocks(void *fsno)
 
     args.path = Fss[currfs];
 
-    // Set the timeout to 3 second
+   
     struct timespec timeout;
 
     // Wait for the thread to complete with a timeout
@@ -807,6 +819,7 @@ void *check_if_filesystem_blocks(void *fsno)
         // Create a new thread to open the directory
         pthread_create(&thread_id, NULL, thread_opendir, &args);
         clock_gettime(CLOCK_REALTIME, &timeout);
+        // Set the timeout
         timeout.tv_sec += 2;
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
@@ -819,12 +832,17 @@ void *check_if_filesystem_blocks(void *fsno)
             insert_to_hash_table(FSOkMap, args.path, 1);
             closedir(args.dp);
         }
+        int s = pthread_cancel(thread_id);
+        if (s != 0) {
+             printf("Cansel thread failed\n");
+        }
         sleep(1);
     }
     
 
     pthread_exit(NULL);
 }
+
 
 int main(int argc, char *argv[])
 {
