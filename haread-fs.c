@@ -836,6 +836,56 @@ void *thread_opendir_with_cleanup(void *arguments)
     return NULL;
 }
 
+
+#define MAX_THREADS 5
+
+void *check_if_filesystem_blocks(void *fsno)
+{
+    pthread_t thread_ids[MAX_THREADS];
+    arg_struct_opendir args[MAX_THREADS];
+    int current_thread = 0;
+
+    while (1)
+    {
+        pthread_testcancel(); // Cancellation point
+
+        // Wait for the current thread to finish
+        if (thread_ids[current_thread] != 0)
+        {
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_sec += 2;
+
+            if (pthread_timedjoin_np(thread_ids[current_thread], NULL, &timeout) != 0)
+            {
+                DEBUG("Call to opendir(%s) timed out\n", Fss[(long)fsno]);
+                pthread_cancel(thread_ids[current_thread]);
+                thread_ids[current_thread] = 0;
+            }
+        }
+
+        // Setup arguments for the new thread
+        args[current_thread].path = Fss[(long)fsno];
+
+        // Create a new thread to open the directory
+        int ret = pthread_create(&thread_ids[current_thread], NULL, thread_opendir_with_cleanup, &args[current_thread]);
+
+        if (ret != 0)
+        {
+            perror("pthread_create");
+            exit(1);
+        }
+
+        // Move to the next thread
+        current_thread = (current_thread + 1) % MAX_THREADS;
+
+        pthread_testcancel(); // Cancellation point
+        sleep(1);
+    }
+}
+
+
+/*
 void *check_if_filesystem_blocks(void *fsno)
 {
     pthread_t thread_id;
@@ -882,6 +932,8 @@ void *check_if_filesystem_blocks(void *fsno)
     }
    
 }
+
+*/
 
 
 int main(int argc, char *argv[])
