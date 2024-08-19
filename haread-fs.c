@@ -161,7 +161,6 @@ static int callback_getattr(const char *path, struct stat *st_data)
 {
     //DEBUG("CALLLBACK_GETATRR %s\n", "sd");
 
-    int res = 0;
     char *ipath = NULL;
     arg_struct_lstat args;
 
@@ -219,7 +218,8 @@ static int callback_getattr(const char *path, struct stat *st_data)
 
 static int callback_readlink(const char *path, char *buf, size_t size)
 {
-   
+    DEBUG("CALLLBACK_READLINK %s\n", path);
+
     int res;
     char *ipath;
     ipath = translate_path(path);
@@ -257,9 +257,6 @@ void *thread_opendir(void *arguments)
     }
     return NULL;
 }
-
-
-
 
 // Function to insert key-value pair into hash table
 void insert_to_hash_table(GHashTable *hash_table, char *key, int value)
@@ -749,7 +746,7 @@ enum
 static void usage(const char *progname)
 {
     fprintf(stdout,
-            "usage: %s paths mountpoint [options]\n"
+            "usage: %s comma,separated,list,of,underlying-fss-paths mountpoint [options]\n"
             "\n"
             "   Mounts paths as a read-only mount at mountpoint\n"
             "\n"
@@ -761,7 +758,7 @@ static void usage(const char *progname)
             progname);
 }
 
-static int rofs_parse_opt(void *data, const char *arg, int key,
+static int hareadfs_parse_opt(void *data, const char *arg, int key,
                           struct fuse_args *outargs)
 {
     (void)data;
@@ -784,7 +781,7 @@ static int rofs_parse_opt(void *data, const char *arg, int key,
         usage(outargs->argv[0]);
         exit(0);
     case KEY_VERSION:
-        fprintf(stdout, "ROFS version %s\n", hareadFsVersion);
+        fprintf(stdout, "hareadfs version %s\n", hareadFsVersion);
         exit(0);
     default:
         fprintf(stderr, "see `%s -h' for usage\n", outargs->argv[0]);
@@ -793,7 +790,7 @@ static int rofs_parse_opt(void *data, const char *arg, int key,
     return 1;
 }
 
-static struct fuse_opt rofs_opts[] = {
+static struct fuse_opt hareadfs_opts[] = {
     FUSE_OPT_KEY("-h", KEY_HELP),
     FUSE_OPT_KEY("--help", KEY_HELP),
     FUSE_OPT_KEY("-V", KEY_VERSION),
@@ -911,7 +908,7 @@ int main(int argc, char *argv[])
 
     FSOkMap = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
-    res = fuse_opt_parse(&args, &Currfs, rofs_opts, rofs_parse_opt);
+    res = fuse_opt_parse(&args, &Currfs, hareadfs_opts, hareadfs_parse_opt);
     if (res != 0)
     {
         fprintf(stderr, "Invalid arguments\n");
