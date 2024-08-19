@@ -9,7 +9,7 @@
 
 #define FUSE_USE_VERSION 26
 
-static const char *rofsVersion = "2024.09.24";
+static const char *hareadFsVersion = "2024.08.20";
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -47,7 +47,7 @@ int Fscount;
 char **Fss; // Underlying filesystems
 
 
-// Key: file system path. Value 1 = fs Ok, 0 = fs Blocks
+// Key: file system path. Values:  1 => fs Ok, 0 => fs Blocks, -1 => Key does not exist 
 GHashTable *FSOkMap;
 
 // This function was generated with ChatGPT which seems like a copy and paste from here Haha :
@@ -111,7 +111,6 @@ static char *translate_path(const char *path)
 }
 
 
-
 int retrieve_from_hash_table(GHashTable *hash_table, char *key)
 {
     if (g_hash_table_contains(hash_table, key))
@@ -120,10 +119,9 @@ int retrieve_from_hash_table(GHashTable *hash_table, char *key)
     }
     else
     {
-        return -1; // or any other value that indicates the key doesn't exist
+        return -1; // key doesn't exist, 
     }
 }
-
 
 
 /******************************
@@ -161,7 +159,7 @@ void *thread_lstat(void *arguments)
 
 static int callback_getattr(const char *path, struct stat *st_data)
 {
-    DEBUG("CALLLBACK_GETATRR %s\n", "sd");
+    //DEBUG("CALLLBACK_GETATRR %s\n", "sd");
 
     int res = 0;
     char *ipath = NULL;
@@ -174,7 +172,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
 
         
         int fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
-        if (fs_status == 0)
+        if (fs_status == 0) // File system blocks. Continue
         {
             continue;
         }
@@ -197,17 +195,13 @@ static int callback_getattr(const char *path, struct stat *st_data)
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
             // The call to lstat timed out
-            DEBUG("Timeout on  %s\n", Currfs);
-           
-           
+            DEBUG("Timeout on  %s\n", Currfs); 
             continue;
         }
         
         all_timed_out = 0;
-        res = args.res;
         free(ipath);
-
-        if (res == 0)
+        if (args.res == 0)
         {
             return 0;
         }
@@ -216,7 +210,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
     if  (all_timed_out ) {
         return - ETIMEDOUT;
     }
-    if (res == -1)
+    if (args.res == -1)
     {
         return -args.errnum;
     }
@@ -339,10 +333,10 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     GHashTable *filesMap = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
-    Currfs = Fss[0];
-    int fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
-  
+    int fs_status = retrieve_from_hash_table(FSOkMap,  Fss[0]);
 
+    
+    // TODO For loop ..
     int ret1 = 0;
     if (fs_status == 1)
     { // Fs Ok
@@ -354,8 +348,7 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     }
 
     // Next fs
-    Currfs = Fss[1];
-    fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
+    fs_status = retrieve_from_hash_table(FSOkMap, Fss[1]);
     int ret2 = 0;
     if (fs_status == 1)
     {
@@ -483,8 +476,9 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
     {
         return -EROFS;
     }
-   
-    DEBUG("CALLLBACK_OPEN %s\n", path);
+    
+    // Disabled due to to much spam ..
+    //DEBUG("CALLLBACK_OPEN %s\n", path);
 
     arg_struct_open args;
     int all_timed_out = 1;
@@ -550,7 +544,7 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
         args.path = ipath;
         args.flags = O_RDONLY;
 
-       
+        // Disabled due to to much spam ..
         //DEBUG("CALLLBACK_READ %s\n", ipath);
 
         pthread_create(&thread_id, NULL, thread_open, &args);
@@ -673,7 +667,7 @@ static int callback_setxattr(const char *path, const char *name, const char *val
  */
 static int callback_getxattr(const char *path, const char *name, char *value, size_t size)
 {
-    DEBUG("CALLLBACK_GETXATTR %s\n", "sd");
+    DEBUG("CALLLBACK_GETXATTR %s\n", path);
     int res;
     char *ipath;
 
@@ -790,7 +784,7 @@ static int rofs_parse_opt(void *data, const char *arg, int key,
         usage(outargs->argv[0]);
         exit(0);
     case KEY_VERSION:
-        fprintf(stdout, "ROFS version %s\n", rofsVersion);
+        fprintf(stdout, "ROFS version %s\n", hareadFsVersion);
         exit(0);
     default:
         fprintf(stderr, "see `%s -h' for usage\n", outargs->argv[0]);
@@ -943,8 +937,6 @@ int main(int argc, char *argv[])
     argc--;
     argv++;
     
-    // monitor_fs();
-
     // Monitor file systems . Does it block ?
     int rc;
     long t;
@@ -965,7 +957,7 @@ int main(int argc, char *argv[])
     fuse_main(args.argc, args.argv, &callback_oper);
 #endif
     /* Now, wait for all threads to finish */
-
+    // It does never reach here .
     for (t = 0; t < Fscount; t++)
     {
         rc = pthread_join(threads[t], NULL);
