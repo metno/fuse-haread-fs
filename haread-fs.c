@@ -264,6 +264,9 @@ void *thread_opendir(void *arguments)
     return NULL;
 }
 
+
+
+
 // Function to insert key-value pair into hash table
 void insert_to_hash_table(GHashTable *hash_table, char *key, int value)
 {
@@ -803,6 +806,37 @@ static struct fuse_opt rofs_opts[] = {
     FUSE_OPT_KEY("--version", KEY_VERSION),
     FUSE_OPT_END};
 
+
+void closedir_wrapper(void *dp) {
+    if (dp != NULL) {
+        closedir((DIR *)dp);
+    }
+}
+
+void *thread_opendir_with_cleanup(void *arguments)
+{
+    arg_struct_opendir *args = (arg_struct_opendir *)arguments;
+    args->dp = opendir(args->path);
+
+    // Setup cleanup handler
+    pthread_cleanup_push(closedir_wrapper, args->dp);
+
+    if (args->dp == NULL)
+    {
+        args->res = errno;
+    }
+    else
+    {
+        args->res = 0;
+    }
+
+    // Remove cleanup handler
+    // If non-zero param is passed, cleanup handler is executed
+    pthread_cleanup_pop(1);
+
+    return NULL;
+}
+
 void *check_if_filesystem_blocks(void *fsno)
 {
     pthread_t thread_id;
@@ -816,10 +850,12 @@ void *check_if_filesystem_blocks(void *fsno)
 
     // Wait for the thread to complete with a timeout
 
+   
+    // Wait for the thread to complete with a timeout
     while (1)
     {
         // Create a new thread to open the directory
-        int ret = pthread_create(&thread_id, NULL, thread_opendir, &args);
+        int ret = pthread_create(&thread_id, NULL, thread_opendir_with_cleanup, &args);
         if ( ret != 0 ) {
             perror("pthread_create");
             exit(1);
@@ -829,25 +865,20 @@ void *check_if_filesystem_blocks(void *fsno)
         timeout.tv_sec += 2;
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
-
             DEBUG("Call to opendir(%s) timed out\n", Fss[currfs]);
             insert_to_hash_table(FSOkMap, args.path, 0);
+
         }
         else
         {
             if ( args.res == 0 ) {
                 insert_to_hash_table(FSOkMap, args.path, 1);
-                int res = closedir(args.dp);
-                if ( res != 0 ) {
-                    perror("closedir");
-
-                }
             } else {
                 printf("Error thread_opendir: %s\n", strerror(args.res));
                 insert_to_hash_table(FSOkMap, args.path, 0);
             }
-
         }
+        pthread_testcancel(); // Cancellation point
         sleep(1);
     }
    
