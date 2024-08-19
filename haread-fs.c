@@ -876,7 +876,7 @@ void *check_if_filesystem_blocks(void *fsno)
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 1);
                 } else {
                     // Too many open files . But checking /proc/<pid>/fd/ only 4 file descriptors are used. So it something with
-                    // dirs are nfs mounts (I believe). Anyways, seems to work and hooks up when nfs server comes back up 
+                    // dirs are nfs mounts (I believe). Anyways, seems to work and seems to hook when nfs server finally comes back up 
                     if (EMFILE == args[current_thread].res ) {
                         DEBUG("Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
                     } else {
@@ -907,57 +907,6 @@ void *check_if_filesystem_blocks(void *fsno)
         sleep(1);
     }
 }
-
-
-/*
-void *check_if_filesystem_blocks(void *fsno)
-{
-    pthread_t thread_id;
-    arg_struct_opendir args;
-    long currfs = (long)fsno;
-
-    args.path = Fss[currfs];
-
-   
-    struct timespec timeout;
-
-    // Wait for the thread to complete with a timeout
-
-   
-    // Wait for the thread to complete with a timeout
-    while (1)
-    {
-        // Create a new thread to open the directory
-        int ret = pthread_create(&thread_id, NULL, thread_opendir_with_cleanup, &args);
-        if ( ret != 0 ) {
-            perror("pthread_create");
-            exit(1);
-        }
-        clock_gettime(CLOCK_REALTIME, &timeout);
-        // Set the timeout
-        timeout.tv_sec += 2;
-        if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
-        {
-            DEBUG("Call to opendir(%s) timed out\n", Fss[currfs]);
-            insert_to_hash_table(FSOkMap, args.path, 0);
-
-        }
-        else
-        {
-            if ( args.res == 0 ) {
-                insert_to_hash_table(FSOkMap, args.path, 1);
-            } else {
-                printf("Error thread_opendir: %s\n", strerror(args.res));
-                insert_to_hash_table(FSOkMap, args.path, 0);
-            }
-        }
-        pthread_testcancel(); // Cancellation point
-        sleep(1);
-    }
-   
-}
-
-*/
 
 
 int main(int argc, char *argv[])
