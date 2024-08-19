@@ -835,15 +835,21 @@ void *check_if_filesystem_blocks(void *fsno)
         }
         else
         {
-            insert_to_hash_table(FSOkMap, args.path, 1);
-            int res = closedir(args.dp);
-            if ( res != 0 ) {
-                perror("closedir");
+            if ( args.res == 0 ) {
+                insert_to_hash_table(FSOkMap, args.path, 1);
+                int res = closedir(args.dp);
+                if ( res != 0 ) {
+                    perror("closedir");
+
+                }
+            } else {
+                printf("Error thread_opendir: %s\n", strerror(args.res));
+                insert_to_hash_table(FSOkMap, args.path, 0);
             }
+
         }
         sleep(1);
     }
-
    
 }
 
