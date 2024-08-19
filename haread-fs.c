@@ -168,8 +168,6 @@ static int callback_getattr(const char *path, struct stat *st_data)
     for (int i = 0; i < Fscount; i++)
     {
         Currfs = Fss[i];
-
-        
         int fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
         if (fs_status == 0) // File system blocks. Continue
         {
