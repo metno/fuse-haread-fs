@@ -163,7 +163,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
 {
     DEBUG("CALLLBACK_GETATRR %s\n", "sd");
 
-    int res;
+    int res = 0;
     char *ipath = NULL;
     arg_struct_lstat args;
 
@@ -199,8 +199,10 @@ static int callback_getattr(const char *path, struct stat *st_data)
             // The call to lstat timed out
             DEBUG("Timeout on  %s\n", Currfs);
            
+           
             continue;
         }
+        
         all_timed_out = 0;
         res = args.res;
         free(ipath);
@@ -296,7 +298,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
         free(ipath);
         return ETIMEDOUT;
     }
-
+    
     free(ipath);
 
     if (args.dp == NULL)
@@ -817,7 +819,11 @@ void *check_if_filesystem_blocks(void *fsno)
     while (1)
     {
         // Create a new thread to open the directory
-        pthread_create(&thread_id, NULL, thread_opendir, &args);
+        int ret = pthread_create(&thread_id, NULL, thread_opendir, &args);
+        if ( ret != 0 ) {
+            perror("pthread_create");
+            exit(1);
+        }
         clock_gettime(CLOCK_REALTIME, &timeout);
         // Set the timeout
         timeout.tv_sec += 2;
@@ -830,17 +836,15 @@ void *check_if_filesystem_blocks(void *fsno)
         else
         {
             insert_to_hash_table(FSOkMap, args.path, 1);
-            closedir(args.dp);
-        }
-        int s = pthread_cancel(thread_id);
-        if (s != 0) {
-             printf("Cansel thread failed\n");
+            int res = closedir(args.dp);
+            if ( res != 0 ) {
+                perror("closedir");
+            }
         }
         sleep(1);
     }
-    
 
-    pthread_exit(NULL);
+   
 }
 
 
