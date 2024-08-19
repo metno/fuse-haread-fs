@@ -818,21 +818,20 @@ void *thread_opendir_with_cleanup(void *arguments)
     arg_struct_opendir *args = (arg_struct_opendir *)arguments;
     args->dp = opendir(args->path);
 
-    // Setup cleanup handler
-    pthread_cleanup_push(closedir_wrapper, args->dp);
-
     if (args->dp == NULL)
     {
         args->res = errno;
     }
     else
     {
+        // Setup cleanup handler only if opendir() was successful
+        pthread_cleanup_push(closedir_wrapper, args->dp);
         args->res = 0;
-    }
 
-    // Remove cleanup handler
-    // If non-zero param is passed, cleanup handler is executed
-    pthread_cleanup_pop(1);
+        // Remove cleanup handler
+        // If non-zero param is passed, cleanup handler is executed
+        pthread_cleanup_pop(1);
+    }
 
     return NULL;
 }
