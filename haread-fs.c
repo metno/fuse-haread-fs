@@ -858,14 +858,14 @@ void *check_if_filesystem_blocks(void *fsno)
                 timed_out_last_iteration = 1;
             } else {
                 if (timed_out_last_iteration) {
-                    DEBUG("%s back online after timed out",  Fss[(long)fsno]);
+                    DEBUG("%s back online after timed out\n",  Fss[(long)fsno]);
                 }
                 timed_out_last_iteration = 0;
                 if (args[current_thread].res == 0 ) {
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 1);
                 } else {
                     // Too many open files . But checking /proc/<pid>/fd/ only 4 file descriptors are used. So it something with
-                    // dirs are nfs mounts (I believe). Anyways, seems to work and seems to hook when nfs server finally comes back up 
+                    // dirs are nfs mounts (I believe). Anyways, seems to work and seems to hook up when nfs server finally comes back up 
                     if (EMFILE == args[current_thread].res ) {
                         DEBUG("Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
                     } else {

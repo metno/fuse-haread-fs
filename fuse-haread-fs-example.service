@@ -5,7 +5,8 @@ After=network.target
 [Service]
 Type=simple
 
-ExecStart=umount -l /lustre/storeAB; /usr/bin/haread-fs /lustre/storeA,/lustre/storeB /lustre/storeAB -f -o allow_other
+ExecStartPre=-sh -c 'umount -l /lustre/storeAB || true'
+ExecStart=/usr/bin/haread-fs /lustre/storeA,/lustre/storeB /lustre/storeAB -f -o allow_other
 
 Restart=on-failure
 
