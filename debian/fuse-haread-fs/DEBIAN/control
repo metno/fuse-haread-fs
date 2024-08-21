@@ -1,5 +1,5 @@
 Package: fuse-haread-fs
-Version: 0.0.1-1
+Version: 0.0.2-1
 Architecture: amd64
 Maintainer: espenm <>
 Installed-Size: 76

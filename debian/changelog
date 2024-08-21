@@ -1,3 +1,9 @@
+fuse-haread-fs (0.0.2-1) UNRELEASED; urgency=low
+
+  * Bugfix release.
+
+ -- espenm <>  Wed, 14 Aug 2024 14:00:22 +0200
+
 fuse-haread-fs (0.0.1-1) UNRELEASED; urgency=low
 
   * Initial release. Closes: #nnnn
