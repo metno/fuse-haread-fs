@@ -33,7 +33,7 @@ static const char *hareadFsVersion = "2024.08.20";
 #include <glib.h>
 
 // Debug flag
-#define DEBUG_ON 1
+#define DEBUG_ON 0
 
 #if DEBUG_ON
 #define DEBUG(fmt, ...) fprintf(stderr, "DEBUG: %s:%d:%s(): \n" fmt, \
@@ -48,7 +48,32 @@ char **Fss; // Underlying filesystems
 
 
 // Key: file system path. Values:  1 => fs Ok, 0 => fs Blocks, -1 => Key does not exist 
-GHashTable *FSOkMap;
+GHashTable *FSOkMap = NULL;
+
+
+
+static inline void LOG(const char *fmt, ...) 
+{
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer[80];
+    
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+    
+    strftime(buffer,80,"%Y-%m-%d %H:%M:%S",timeinfo);
+    printf("%s UTC: ", buffer);
+    
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    
+    printf("\n");
+}
+
+
+
 
 // This function was generated with ChatGPT which seems like a copy and paste from here Haha :
 // https://stackoverflow.com/questions/9210528/split-string-with-delimiters-in-c
@@ -192,7 +217,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
             // The call to lstat timed out
-            DEBUG("Timeout on  %s\n", Currfs); 
+            LOG("Timeout on  %s\n", Currfs); 
             continue;
         }
         
@@ -286,7 +311,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
     if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
     {
         // The call to opendir timed out
-        DEBUG("Call to opendir(%s) timed out\n", ipath);
+        LOG("Call to opendir(%s) timed out\n", ipath);
         free(ipath);
         return ETIMEDOUT;
     }
@@ -492,7 +517,7 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
 
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
-            DEBUG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
+            LOG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
             free(ipath);
             continue;
         }
@@ -550,7 +575,7 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
 
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
-            DEBUG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
+            LOG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
             free(ipath);
             continue;
         }
@@ -851,14 +876,14 @@ void *check_if_filesystem_blocks(void *fsno)
             if (pthread_timedjoin_np(thread_ids[current_thread], NULL, &timeout) != 0)
             {
                 timeout_count++;
-                DEBUG("Call to opendir(%s) timed out (%d times since last success)\n", Fss[(long)fsno], timeout_count);
+                LOG("Call to opendir(%s) timed out (%d times since last success)\n", Fss[(long)fsno], timeout_count);
                 pthread_cancel(thread_ids[current_thread]);
                 thread_ids[current_thread] = 0;
                 insert_to_hash_table(FSOkMap, args[current_thread].path, 0);
                 timed_out_last_iteration = 1;
             } else {
                 if (timed_out_last_iteration) {
-                    DEBUG("%s back online after timed out\n",  Fss[(long)fsno]);
+                    LOG("%s back online after timed out\n",  Fss[(long)fsno]);
                 }
                 timed_out_last_iteration = 0;
                 if (args[current_thread].res == 0 ) {
@@ -869,7 +894,7 @@ void *check_if_filesystem_blocks(void *fsno)
                     if (EMFILE == args[current_thread].res ) {
                         DEBUG("Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
                     } else {
-                        DEBUG("Error thread_opendir: %s\n", strerror(args[current_thread].res));
+                        LOG("Error thread_opendir: %s\n", strerror(args[current_thread].res));
                     }
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 0);
                 }
@@ -941,7 +966,7 @@ int main(int argc, char *argv[])
         rc = pthread_create(&threads[t], NULL, check_if_filesystem_blocks, (void *)t);
         if (rc)
         {
-            printf("ERROR; return code from pthread_create() is %d\n", rc);
+            LOG("ERROR; return code from pthread_create() is %d\n", rc);
             exit(-1);
         }
     }
@@ -958,7 +983,7 @@ int main(int argc, char *argv[])
         rc = pthread_join(threads[t], NULL);
         if (rc)
         {
-            printf("ERROR; return code from pthread_join() is %d\n", rc);
+            LOG("ERROR; return code from pthread_join() is %d\n", rc);
             exit(-1);
         }
     }
