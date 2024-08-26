@@ -182,6 +182,9 @@ void *thread_lstat(void *arguments)
     return NULL;
 }
 
+#define MAX_THREADS 5
+#define MAX_FS 5
+
 static int callback_getattr(const char *path, struct stat *st_data)
 {
     //DEBUG("CALLLBACK_GETATRR %s\n", "sd");
@@ -190,6 +193,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
     arg_struct_lstat args;
 
     int all_timed_out = 1;
+    int timed_out_last_iteration[MAX_FS] = {0};
     for (int i = 0; i < Fscount; i++)
     {
         Currfs = Fss[i];
@@ -217,8 +221,13 @@ static int callback_getattr(const char *path, struct stat *st_data)
         if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
         {
             // The call to lstat timed out
-            LOG("Timeout on  %s\n", Currfs); 
+            LOG("callback_getattr: Timeout on  %s\n", Currfs);
+            timed_out_last_iteration[i]++;
             continue;
+        } 
+        if (timed_out_last_iteration[i]) {
+            LOG("callback_getattr: %s back online after timed out %d times\n",  Currfs,  timed_out_last_iteration[i]);
+            timed_out_last_iteration[i] = 0;
         }
         
         all_timed_out = 0;
@@ -323,6 +332,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
         return args.res;
     }
 
+    // TODO Test for time out also here 
     while ((de = readdir(args.dp)) != NULL)
     {
         struct stat st;
@@ -370,7 +380,7 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     // Next fs
     fs_status = retrieve_from_hash_table(FSOkMap, Fss[1]);
     int ret2 = 0;
-    if (fs_status == 1)
+    if (fs_status == 1) // Fs available
     {
         ret2 = filldir(path, buf, filler, filesMap);
     }
@@ -596,7 +606,7 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
     }
 
  
-    res = pread(args.res, buf, size, offset);
+    res = pread(args.res, buf, size, offset);  // Fix this: I guess pread will block if nfs server goes down
     close(args.res);
     
     if (res == -1)
@@ -851,16 +861,15 @@ void *thread_opendir_with_cleanup(void *arguments)
 }
 
 
-#define MAX_THREADS 5
+
 
 void *check_if_filesystem_blocks(void *fsno)
 {
-    pthread_t thread_ids[MAX_THREADS];
-    arg_struct_opendir args[MAX_THREADS];
+    pthread_t thread_ids[MAX_THREADS] = {0};
+    arg_struct_opendir args[MAX_THREADS]  = {0};
     int current_thread = 0;
-    int timeout_count = 0;
     
-    int timed_out_last_iteration = 0;
+    int timed_out_last_iteration[MAX_FS] = {0};
     while (1)
     {
         
@@ -875,30 +884,30 @@ void *check_if_filesystem_blocks(void *fsno)
 
             if (pthread_timedjoin_np(thread_ids[current_thread], NULL, &timeout) != 0)
             {
-                timeout_count++;
-                LOG("Call to opendir(%s) timed out (%d times since last success)\n", Fss[(long)fsno], timeout_count);
+                timed_out_last_iteration[(long)fsno]++;
+                LOG("Call to opendir(%s) timed out (%d times since last success)\n", Fss[(long)fsno],  timed_out_last_iteration[(long)fsno]);
                 pthread_cancel(thread_ids[current_thread]);
                 thread_ids[current_thread] = 0;
                 insert_to_hash_table(FSOkMap, args[current_thread].path, 0);
-                timed_out_last_iteration = 1;
+               
             } else {
-                if (timed_out_last_iteration) {
-                    LOG("%s back online after timed out\n",  Fss[(long)fsno]);
+                if (timed_out_last_iteration[(long)fsno]) {
+                    LOG("check_if_filesystem_blocks: %s back online after timed out\n",  Fss[(long)fsno]);
+                    timed_out_last_iteration[(long)fsno] = 0;
                 }
-                timed_out_last_iteration = 0;
+                
                 if (args[current_thread].res == 0 ) {
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 1);
                 } else {
                     // Too many open files . But checking /proc/<pid>/fd/ only 4 file descriptors are used. So it something with
                     // dirs are nfs mounts (I believe). Anyways, seems to work and seems to hook up when nfs server finally comes back up 
                     if (EMFILE == args[current_thread].res ) {
-                        DEBUG("Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
+                        DEBUG("check_if_filesystem_blocks: Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
                     } else {
-                        LOG("Error thread_opendir: %s\n", strerror(args[current_thread].res));
+                        LOG("check_if_filesystem_blocks: Error thread_opendir: %s\n", strerror(args[current_thread].res));
                     }
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 0);
                 }
-                timeout_count = 0;
             }
         }
 
