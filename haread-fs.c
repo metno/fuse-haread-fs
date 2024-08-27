@@ -215,6 +215,7 @@ static int callback_getattr(const char *path, struct stat *st_data)
         // Set the timeout to 1 second
         struct timespec timeout;
         clock_gettime(CLOCK_REALTIME, &timeout);
+
         timeout.tv_sec += 5;
 
         // Wait for the thread to complete with a timeout
@@ -346,6 +347,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler, GHashTable *fil
         if (filler(buf, de->d_name, &st, 0))
             break;
         insert_to_hash_table(filesMap, de->d_name, 1);
+        
     }
 
     closedir(args.dp);
@@ -363,7 +365,8 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     GHashTable *filesMap = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
-    int fs_status = retrieve_from_hash_table(FSOkMap,  Fss[0]);
+    Currfs = Fss[0];
+    int fs_status = retrieve_from_hash_table(FSOkMap,  Currfs);
 
     
     // TODO For loop ..
@@ -378,13 +381,14 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     }
 
     // Next fs
-    fs_status = retrieve_from_hash_table(FSOkMap, Fss[1]);
+    Currfs = Fss[1];
+    fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
     int ret2 = 0;
     if (fs_status == 1) // Fs available
     {
         ret2 = filldir(path, buf, filler, filesMap);
     }
-
+   
     g_hash_table_destroy(filesMap);
 
     if (ret1 == 0 || ret2 == 0)
@@ -536,6 +540,7 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
 
         if (args.res != -1  ) {
             close(args.res);
+            //finfo->fh = args.res;
             break;
         }
         if ( args.res == -1 && args.errnum == ENOENT) {
@@ -551,17 +556,57 @@ static int callback_open(const char *path, struct fuse_file_info *finfo)
     return 0;
 }
 
+
+
+typedef struct arg_struct_read
+{
+    char *path;
+    int flags;
+    int res;
+    int errnum;
+    char *buf;
+    size_t size;
+    off_t offset;
+} arg_struct_read;
+
+void *thread_read(void *arguments)
+{
+    arg_struct_read *args = (arg_struct_read *)arguments;
+    int fd = open(args->path, args->flags);
+    if (fd == -1)
+    {
+        args->errnum = errno;
+        args->res = fd;
+        return NULL;
+    }
+
+    args->res = pread(fd, args->buf, args->size, args->offset); 
+    close(fd);
+    
+    if (args->res == -1)
+    {
+        args->errnum = errno;
+        return NULL;
+    }
+    //args->res  = 0;
+    return NULL;
+}
+
 static int callback_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *finfo)
 {
-
-    int res;
     (void)finfo;
-    char *ipath;
     
-    arg_struct_open args;
+   
+    char *ipath;
+    arg_struct_read args;
+    args.size = size;
+    args.offset = offset;
+    
+    args.flags = O_RDONLY;
 
-    for (int i = 0; i < Fscount; i++) // Try open .
+    for (int i = 0; i < Fscount; i++) 
     {
+        args.buf = buf;
         Currfs = Fss[i];
         int fs_status = retrieve_from_hash_table(FSOkMap, Currfs);
         if (fs_status == 0)
@@ -572,49 +617,36 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
         pthread_t thread_id;
         ipath = translate_path(path);
         args.path = ipath;
-        args.flags = O_RDONLY;
-
+       
         // Disabled due to to much spam ..
         //DEBUG("CALLLBACK_READ %s\n", ipath);
 
-        pthread_create(&thread_id, NULL, thread_open, &args);
+        pthread_create(&thread_id, NULL, thread_read, &args);
 
         struct timespec timeout;
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_sec += 5;
+        timeout.tv_sec += 5; //  Timeout for reading one chunk of the file taken out of thin air
 
-        if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0)
+        if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0) 
         {
-            LOG("callback_read: open(%s) timed out. Trying next fs if any\n", ipath);
+            LOG("callback_read: read(%s) timed out. Trying next fs if any\n", ipath);
             free(ipath);
             continue;
         }
         free(ipath);
+        
         if (args.res != -1  ) {
-            break;
+            return args.res;
         }
-        if ( args.res == -1 && args.errnum == ENOENT) {
-            continue; // Try next fs
+        if ( args.res == -1 && args.errnum == ENOENT) { // Try next fs
+            continue; 
         } else if ( args.res == -1 && args.errnum != ENOENT) {
-            return - args.errnum;
+            return args.res;
         }
     }
-
-    if (args.res == -1)
-    {
-        return -args.errnum;
-    }
-
- 
-    res = pread(args.res, buf, size, offset);  // Fix this: I guess pread will block if nfs server goes down
-    close(args.res);
     
-    if (res == -1)
-    {
-        return -errno;
-    }
-   
-    return res;
+    return args.res;
+    
 }
 
 static int callback_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *finfo)

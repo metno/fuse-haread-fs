@@ -1,6 +1,7 @@
 prefix = /usr/
 
-CFLAGS = -Wall -ansi -W -std=gnu99 -g -ggdb -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -fno-stack-protector -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include 
+#CFLAGS = -Wall -ansi -W -std=gnu99 -g -ggdb -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -fno-stack-protector -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include
+CFLAGS = -Wall -ansi -W -std=gnu99 -g -ggdb -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -O0  -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include 
 LIBS = -lfuse -lglib-2.0
 
 all: haread-fs
