@@ -936,7 +936,7 @@ void *check_if_filesystem_blocks(void *fsno)
                     if (EMFILE == args[current_thread].res ) {
                         DEBUG("check_if_filesystem_blocks: Warning (Linux NFS client stuff? ) thread_opendir: %s\n", strerror(args[current_thread].res));
                     } else {
-                        LOG("check_if_filesystem_blocks: Error thread_opendir: %s\n", strerror(args[current_thread].res));
+                        LOG("check_if_filesystem_blocks: Warning thread_opendir %s: %s\n", Fss[(long)fsno], strerror(args[current_thread].res));
                     }
                     insert_to_hash_table(FSOkMap, args[current_thread].path, 0);
                 }
