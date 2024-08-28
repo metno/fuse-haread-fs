@@ -41,19 +41,19 @@ Edit your mount points in fuse-haread-fs-example.service
 
 ## Benchmarks and Comparitions . All benchmarks from 2. run
 
-* Copy 3.1 GB from nfs-mounted lustre to laptop : 1m22,917
+* Copy 3.1 GB from ~~nfs-mounted~~ cifs-mounted lustre to laptop : 1m22,917
 
-* Copy 3.1 GB file from haread mounted nfs-mount, nfs has mounted lustre  to laptop: 2m44,079s
+* Copy 3.1 GB file from haread mounted ~~nfs-mount~~ cifs mount , ~~nfs~~ cifs has mounted lustre  - to laptop: 2m44,079s
 
-* Copy directory with ~100 68Kb files from ~~nfs-mounted~~ cifs mounted lustre to laptop  :0m1,130s
+* Copy directory with ~100 68Kb files from haread mounted ~~nfs-mounted~~ cifs mount lustre - to laptop  :0m1,130s
 
-* Copy directory with ~100 68Kb files from haread mounted nfs-mount, nfs has mounted lustre top laptop : 0m1,717s
+* Copy directory with ~100 68Kb files from haread mounted ~~nfs-mount~~ cifs mount, ~~nfs~~ cifs has mounted lustre -  to laptop : 0m1,717s
 
-* Copy ~100 68Kb files from ~~nfs-mounted~~ cifs mounted lustre to laptop : 0m1,120s
+* Copy ~100 68Kb files from haread mounted ~~nfs-mounted~~ cifs mounted lustre to laptop : 0m1,120s
 
 * Copy ~100 68Kb files from haread mounted ~~nfs-mount~~ cifs mount, ~~nfs~~ cifs has mounted lustre to laptop : 0m1,560s
 
-* List ~1200 files in ~~nfs-mounted~~ cifs mounted lustre directory : 0m0,317s
+* List ~1200 files in haread mounted ~~nfs-mounted~~ cifs mounted lustre directory : 0m0,317s
 
 * List ~1200 files in haread mounted ~~nfs-mount~~ cifs mounted : 0m0,581s
 
