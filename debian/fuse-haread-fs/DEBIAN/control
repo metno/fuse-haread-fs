@@ -1,9 +1,9 @@
 Package: fuse-haread-fs
-Version: 0.0.3-1
+Version: 0.0.4-1
 Architecture: amd64
 Maintainer: espenm <>
-Installed-Size: 72
-Depends: libc6 (>= 2.34), libfuse2 (>= 2.6), libglib2.0-0 (>= 2.31.8)
+Installed-Size: 76
+Depends: libc6 (>= 2.34), libfuse2t64 (>= 2.6), libglib2.0-0t64 (>= 2.32.0)
 Section: unknown
 Priority: optional
 Multi-Arch: foreign
