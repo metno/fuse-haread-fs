@@ -1,9 +1,16 @@
+fuse-haread-fs (0.0.4-2) UNRELEASED; urgency=low
+
+  * Refactor release.
+
+ -- espenm <>  Fri, 30 Jan 2026 14:14:22 +0100
+
 fuse-haread-fs (0.0.4-1) UNRELEASED; urgency=low
 
   * Refactor release.
 
  -- espenm <>  Wed, 10 Dec 2025 18:00:22 +0100
-	fuse-haread-fs (0.0.3-1) UNRELEASED; urgency=low
+
+fuse-haread-fs (0.0.3-1) UNRELEASED; urgency=low
 
   * Bugfix release.
 

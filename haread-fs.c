@@ -8,7 +8,7 @@
 
 #define FUSE_USE_VERSION 26
 
-static const char *hareadFsVersion = "2025.12.10";
+static const char *hareadFsVersion = "0.0.4-2";
 
 #include <assert.h>
 #include <dirent.h>
