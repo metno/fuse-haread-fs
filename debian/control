@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: espenm <>
 Build-Depends: debhelper-compat (= 12)
 Standards-Version: 4.5.0
-Homepage: <insert the upstream URL, if relevant>
+Homepage: https://github.com/metno/fuse-haread-fs
 
 Package: fuse-haread-fs
 Architecture: any
