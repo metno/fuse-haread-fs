@@ -8,7 +8,7 @@
 
 #define FUSE_USE_VERSION 26
 
-static const char *hareadFsVersion = "0.0.4-2";
+static const char *hareadFsVersion = "0.0.4-3";
 
 #include <assert.h>
 #include <dirent.h>
@@ -49,9 +49,13 @@ char **Fss; // Underlying filesystems
 // not exist
 GHashTable *FSOkMap = NULL;
 
-// Mutex for protecting global variables
-pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define MAX_THREADS 5
+#define MAX_FS 10
+#define OPERATION_TIMEOUT_SEC 5
+
+static int getattr_timed_out_count[MAX_FS] = {0};
 
 static inline void LOG(const char *fmt, ...) {
   time_t rawtime;
@@ -73,9 +77,8 @@ static inline void LOG(const char *fmt, ...) {
   fflush(stdout);
 }
 
-// This function was generated with ChatGPT which seems like a copy and paste
-// from here Haha :
-// https://stackoverflow.com/questions/9210528/split-string-with-delimiters-in-c
+// NOTE: this function modifies its input string (strtok is destructive).
+// Callers must not rely on `str` being unchanged after this call.
 char **split_string(char *str, const char *delimiter) {
   char **result = 0;
   size_t count = 0;
@@ -186,17 +189,12 @@ void *thread_lstat(void *arguments) {
   return NULL;
 }
 
-#define MAX_THREADS 5
-#define MAX_FS 10
-#define OPERATION_TIMEOUT_SEC 5
-
 static int callback_getattr(const char *path, struct stat *st_data) {
   char *ipath = NULL;
   arg_struct_lstat *args = NULL;
   pthread_t thread_id = 0;
   int all_timed_out = 1;
   int result = -ENOENT;
-  int timed_out_last_iteration[MAX_FS] = {0};
 
   for (int i = 0; i < Fscount && i < MAX_FS; i++) {
     int fs_status = retrieve_from_hash_table(FSOkMap, Fss[i]);
@@ -238,7 +236,7 @@ static int callback_getattr(const char *path, struct stat *st_data) {
     if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0) {
       // The call to lstat timed out
       LOG("callback_getattr: Timeout on %s\n", Fss[i]);
-      timed_out_last_iteration[i]++;
+      getattr_timed_out_count[i]++;
 
       // Cancel the thread to prevent use-after-free
       pthread_cancel(thread_id);
@@ -249,10 +247,10 @@ static int callback_getattr(const char *path, struct stat *st_data) {
       continue;
     }
 
-    if (timed_out_last_iteration[i]) {
+    if (getattr_timed_out_count[i]) {
       LOG("callback_getattr: %s back online after timed out %d times\n", Fss[i],
-          timed_out_last_iteration[i]);
-      timed_out_last_iteration[i] = 0;
+          getattr_timed_out_count[i]);
+      getattr_timed_out_count[i] = 0;
     }
 
     all_timed_out = 0;
@@ -548,6 +546,11 @@ static int callback_open(const char *path, struct fuse_file_info *finfo) {
   int result = -ENOENT;
 
   for (int i = 0; i < Fscount && i < MAX_FS; i++) {
+    int fs_status = retrieve_from_hash_table(FSOkMap, Fss[i]);
+    if (fs_status != 1) {
+      continue;
+    }
+
     char *ipath = translate_path(path, Fss[i]);
     if (!ipath) {
       continue;
@@ -712,7 +715,7 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
       free(ipath);
       continue;
     } else if (args->res == -1 && args->errnum != ENOENT) {
-      result = -args->errnum; // Fixed: was args.res
+      result = -args->errnum;
       free(args);
       free(ipath);
       return result;
@@ -736,21 +739,33 @@ static int callback_write(const char *path, const char *buf, size_t size,
 }
 
 static int callback_statfs(const char *path, struct statvfs *st_buf) {
-  DEBUG("CALLLBACK_STATFS %s", "sd");
-  int res;
-  char *ipath;
+  DEBUG("CALLLBACK_STATFS %s", path);
 
-  ipath = translate_path(path, Fss[0]);
-  if (!ipath) {
-    return -ENOMEM;
+  for (int i = 0; i < Fscount && i < MAX_FS; i++) {
+    int fs_status = retrieve_from_hash_table(FSOkMap, Fss[i]);
+    if (fs_status != 1) {
+      continue;
+    }
+
+    char *ipath = translate_path(path, Fss[i]);
+    if (!ipath) {
+      continue;
+    }
+
+    int res = statvfs(ipath, st_buf);
+    free(ipath);
+
+    if (res == 0) {
+      return 0;
+    }
+
+    // Only fall through to the next fs on ENOENT; any other error is real.
+    if (errno != ENOENT) {
+      return -errno;
+    }
   }
 
-  res = statvfs(ipath, st_buf); // Fixed: was statvfs(path, st_buf)
-  free(ipath);
-  if (res == -1) {
-    return -errno;
-  }
-  return 0;
+  return -ENOENT;
 }
 
 static int callback_release(const char *path, struct fuse_file_info *finfo) {
@@ -989,28 +1004,11 @@ void closedir_wrapper(void *dp) {
   }
 }
 
-void *thread_opendir_with_cleanup(void *arguments) {
-  arg_struct_opendir *args = (arg_struct_opendir *)arguments;
-  args->dp = opendir(args->path);
-
-  if (args->dp == NULL) {
-    args->res = errno;
-  } else {
-    // Setup cleanup handler only if opendir() was successful
-    pthread_cleanup_push(closedir_wrapper, args->dp);
-    args->res = 0;
-
-    // Remove cleanup handler
-    // If non-zero param is passed, cleanup handler is executed
-    pthread_cleanup_pop(1);
-  }
-
-  return NULL;
-}
 
 void *check_if_filesystem_blocks(void *fsno) {
   pthread_t thread_ids[MAX_THREADS] = {0};
-  arg_struct_opendir args[MAX_THREADS] = {0};
+
+  arg_struct_opendir *slot_args[MAX_THREADS] = {NULL};
   int current_thread = 0;
 
   int timed_out_last_iteration[MAX_FS] = {0};
@@ -1024,7 +1022,7 @@ void *check_if_filesystem_blocks(void *fsno) {
   while (1) {
     pthread_testcancel(); // Cancellation point
 
-    // Wait for the current thread to finish
+    // Wait for the current thread to finish before reusing the slot.
     if (thread_ids[current_thread] != 0) {
       struct timespec timeout;
       clock_gettime(CLOCK_REALTIME, &timeout);
@@ -1040,6 +1038,10 @@ void *check_if_filesystem_blocks(void *fsno) {
         pthread_join(thread_ids[current_thread], NULL);
         thread_ids[current_thread] = 0;
 
+
+        free(slot_args[current_thread]);
+        slot_args[current_thread] = NULL;
+
         insert_to_hash_table(FSOkMap, Fss[fs_index], 0);
       } else {
         if (timed_out_last_iteration[fs_index]) {
@@ -1048,42 +1050,59 @@ void *check_if_filesystem_blocks(void *fsno) {
           timed_out_last_iteration[fs_index] = 0;
         }
 
-        if (args[current_thread].res == 0) {
+        arg_struct_opendir *finished = slot_args[current_thread];
+
+        if (finished->res == 0) {
+          // Close the directory that thread_opendir left open on success.
+          if (finished->dp != NULL) {
+            closedir(finished->dp);
+            finished->dp = NULL;
+          }
           insert_to_hash_table(FSOkMap, Fss[fs_index], 1);
         } else {
-          // Too many open files . But checking /proc/<pid>/fd/ only 4 file
-          // descriptors are used. So it something with dirs are nfs mounts (I
-          // believe). Anyways, seems to work and seems to hook up when nfs
-          // server finally comes back up
-          if (EMFILE == args[current_thread].res) {
+          if (EMFILE == finished->res) {
             DEBUG("check_if_filesystem_blocks: Warning (Linux NFS client "
-                  "stuff? ) thread_opendir: %s\n",
-                  strerror(args[current_thread].res));
+                  "stuff?) thread_opendir: %s\n",
+                  strerror(finished->res));
           } else {
             LOG("check_if_filesystem_blocks: Warning thread_opendir %s: %s\n",
-                Fss[fs_index], strerror(args[current_thread].res));
+                Fss[fs_index], strerror(finished->res));
           }
           insert_to_hash_table(FSOkMap, Fss[fs_index], 0);
         }
+
+        free(slot_args[current_thread]);
+        slot_args[current_thread] = NULL;
+        thread_ids[current_thread] = 0;
       }
     }
+    arg_struct_opendir *new_args = malloc(sizeof(arg_struct_opendir));
+    if (!new_args) {
+      LOG("check_if_filesystem_blocks: malloc failed for fs %s\n",
+          Fss[fs_index]);
+      insert_to_hash_table(FSOkMap, Fss[fs_index], 0);
+      sleep(1);
+      continue;
+    }
 
-    // Setup arguments for the new thread
-    args[current_thread].path = Fss[fs_index];
-    args[current_thread].dp = NULL;
-    args[current_thread].res = -1;
+    new_args->path = Fss[fs_index];
+    new_args->dp = NULL;
+    new_args->res = -1;
+    slot_args[current_thread] = new_args;
 
-    // Create a new thread to open the directory
-    int ret =
-        pthread_create(&thread_ids[current_thread], NULL,
-                       thread_opendir_with_cleanup, &args[current_thread]);
+    // Create a new thread to open the directory.
+    int ret = pthread_create(&thread_ids[current_thread], NULL,
+                             thread_opendir, new_args);
 
     if (ret != 0) {
       LOG("pthread_create failed: %s\n", strerror(ret));
+      free(slot_args[current_thread]);
+      slot_args[current_thread] = NULL;
+      thread_ids[current_thread] = 0;
       insert_to_hash_table(FSOkMap, Fss[fs_index], 0);
     }
 
-    // Move to the next thread
+    // Move to the next thread slot.
     current_thread = (current_thread + 1) % MAX_THREADS;
 
     pthread_testcancel(); // Cancellation point
@@ -1115,6 +1134,9 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  // NOTE: split_string modifies fs_paths_arg in place via strtok.
+  // The individual tokens are strdup'd into Fss[], so fs_paths_arg itself
+  // is no longer meaningful after this call and is freed at exit.
   Fss = split_string(fs_paths_arg, ",");
   if (!Fss) {
     fprintf(stderr, "Failed to parse filesystem paths\n");
@@ -1182,7 +1204,6 @@ int main(int argc, char *argv[]) {
     free(fs_paths_arg);
   }
 
-  pthread_mutex_destroy(&global_mutex);
   pthread_mutex_destroy(&hash_mutex);
 
   return 0;
