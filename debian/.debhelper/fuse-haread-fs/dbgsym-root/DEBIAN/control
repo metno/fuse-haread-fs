@@ -1,13 +1,13 @@
 Package: fuse-haread-fs-dbgsym
 Package-Type: ddeb
 Source: fuse-haread-fs
-Version: 0.0.4-3
+Version: 0.0.4-4
 Auto-Built-Package: debug-symbols
 Architecture: amd64
 Maintainer: espenm <>
 Installed-Size: 31
-Depends: fuse-haread-fs (= 0.0.4-3)
+Depends: fuse-haread-fs (= 0.0.4-4)
 Section: debug
 Priority: optional
 Description: debug symbols for fuse-haread-fs
-Build-Ids: 91e7e1b768cd99196cf0b9436ff1b5b26127ba5a
+Build-Ids: 3af33c50370a3fd495b7799ded579b13e67b9545
