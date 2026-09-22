@@ -10,4 +10,4 @@ Depends: fuse-haread-fs (= 0.0.4-4)
 Section: debug
 Priority: optional
 Description: debug symbols for fuse-haread-fs
-Build-Ids: 3af33c50370a3fd495b7799ded579b13e67b9545
+Build-Ids: fe3c1754e669b4662fa5cee2e310ddf3bcc7f33b
