@@ -1,44 +1,54 @@
+fuse-haread-fs (0.0.5-1) UNRELEASED; urgency=low
+
+  * fuse2 --> fuse3 + regression fix .
+
+ -- Espen Myrland <espenm@met.no>  Wed, 07 Oct 2026 17:58:22 +0100
+
 fuse-haread-fs (0.0.4-5) UNRELEASED; urgency=low
 
   * Div claude fixes.
+
+ -- Espen Myrland <espenm@met.no>  Wed, 07 Oct 2026 17:58:22 +0100
 
 fuse-haread-fs (0.0.4-4) UNRELEASED; urgency=low
 
   * Div claude fixes.
 
+ -- Espen Myrland <espenm@met.no>  Wed, 07 Oct 2026 17:58:22 +0100
+
 fuse-haread-fs (0.0.4-3) UNRELEASED; urgency=low
 
   * control file update.
 
- -- espenm <>  Fri, 30 Jan 2026 14:41:22 +0100
+ -- Espen Myrland <espenm@met.no>  Fri, 30 Jan 2026 14:41:22 +0100
 
 fuse-haread-fs (0.0.4-2) UNRELEASED; urgency=low
 
   * minor fix release.
 
- -- espenm <>  Fri, 30 Jan 2026 14:14:22 +0100
+ -- Espen Myrland <espenm@met.no>  Fri, 30 Jan 2026 14:14:22 +0100
 
 fuse-haread-fs (0.0.4-1) UNRELEASED; urgency=low
 
   * Refactor release.
 
- -- espenm <>  Wed, 10 Dec 2025 18:00:22 +0100
+ -- Espen Myrland <espenm@met.no>  Wed, 10 Dec 2025 18:00:22 +0100
 
 fuse-haread-fs (0.0.3-1) UNRELEASED; urgency=low
 
   * Bugfix release.
 
- -- espenm <>  Wed, 27 Aug 2024 14:00:22 +0200
+ -- Espen Myrland <espenm@met.no>  Wed, 27 Aug 2024 14:00:22 +0200
 
 fuse-haread-fs (0.0.2-1) UNRELEASED; urgency=low
 
   * Bugfix release.
 
- -- espenm <>  Wed, 14 Aug 2024 14:00:22 +0200
+ -- Espen Myrland <espenm@met.no>  Wed, 14 Aug 2024 14:00:22 +0200
 
 fuse-haread-fs (0.0.1-1) UNRELEASED; urgency=low
 
   * Initial release. Closes: #nnnn
     <nnnn is the bug number of your ITP>
 
- -- espenm <>  Wed, 14 Aug 2024 14:00:22 +0200
+ -- Espen Myrland <espenm@met.no>  Wed, 14 Aug 2024 14:00:22 +0200

@@ -6,16 +6,16 @@
  * Specially the rofs one LICENCE : GPL v3
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 31
 
-static const char *hareadFsVersion = "0.0.4-5";
+static const char *hareadFsVersion = "0.0.5-1";
 
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <features.h>
-#include <fuse.h>
+#include <fuse3/fuse.h>
 #include <glib.h>
 #include <pthread.h>
 #include <setjmp.h>
@@ -189,7 +189,9 @@ void *thread_lstat(void *arguments) {
   return NULL;
 }
 
-static int callback_getattr(const char *path, struct stat *st_data) {
+static int callback_getattr(const char *path, struct stat *st_data,
+                            struct fuse_file_info *fi) {
+  (void)fi;
   char *ipath = NULL;
   arg_struct_lstat *args = NULL;
   pthread_t thread_id = 0;
@@ -237,13 +239,12 @@ static int callback_getattr(const char *path, struct stat *st_data) {
       // The call to lstat timed out
       LOG("callback_getattr: Timeout on %s\n", Fss[i]);
       getattr_timed_out_count[i]++;
+      insert_to_hash_table(FSOkMap, Fss[i], 0);
 
-      // Cancel the thread to prevent use-after-free
+      // Do not join after timeout: blocked network filesystems may never reach
+      // a cancellation point, and join would block the FUSE request path.
       pthread_cancel(thread_id);
-      pthread_join(thread_id, NULL); // Wait for cancellation
-
-      free(args);
-      free(ipath);
+      pthread_detach(thread_id);
       continue;
     }
 
@@ -368,10 +369,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler,
     LOG("filldir(): Call to opendir(%s) timed out\n", ipath);
 
     pthread_cancel(thread_id);
-    pthread_join(thread_id, NULL);
-
-    free(args);
-    free(ipath);
+    pthread_detach(thread_id);
     return ETIMEDOUT;
   }
 
@@ -397,7 +395,7 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler,
       continue;
     }
 
-    if (filler(buf, de->d_name, &st, 0))
+    if (filler(buf, de->d_name, &st, 0, (enum fuse_fill_dir_flags)0))
       break;
 
     pthread_mutex_lock(&hash_mutex);
@@ -412,9 +410,11 @@ int filldir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                            off_t offset, struct fuse_file_info *fi) {
+                            off_t offset, struct fuse_file_info *fi,
+                            enum fuse_readdir_flags flags) {
   (void)offset;
   (void)fi;
+  (void)flags;
 
   GHashTable *filesMap =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
@@ -438,6 +438,8 @@ static int callback_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     if (ret == 0) {
       success_count++;
+    } else if (ret == ETIMEDOUT) {
+      insert_to_hash_table(FSOkMap, Fss[i], 0);
     } else if (ret != ENOENT && ret != ETIMEDOUT) {
       last_error = ret;
     }
@@ -481,9 +483,10 @@ static int callback_symlink(const char *from, const char *to) {
   return -EROFS;
 }
 
-static int callback_rename(const char *from, const char *to) {
+static int callback_rename(const char *from, const char *to, unsigned int flags) {
   (void)from;
   (void)to;
+  (void)flags;
   return -EROFS;
 }
 
@@ -493,28 +496,36 @@ static int callback_link(const char *from, const char *to) {
   return -EROFS;
 }
 
-static int callback_chmod(const char *path, mode_t mode) {
+static int callback_chmod(const char *path, mode_t mode,
+                          struct fuse_file_info *fi) {
   (void)path;
   (void)mode;
+  (void)fi;
   return -EROFS;
 }
 
-static int callback_chown(const char *path, uid_t uid, gid_t gid) {
+static int callback_chown(const char *path, uid_t uid, gid_t gid,
+                          struct fuse_file_info *fi) {
   (void)path;
   (void)uid;
   (void)gid;
+  (void)fi;
   return -EROFS;
 }
 
-static int callback_truncate(const char *path, off_t size) {
+static int callback_truncate(const char *path, off_t size,
+                             struct fuse_file_info *fi) {
   (void)path;
   (void)size;
+  (void)fi;
   return -EROFS;
 }
 
-static int callback_utime(const char *path, struct utimbuf *buf) {
+static int callback_utimens(const char *path, const struct timespec tv[2],
+                            struct fuse_file_info *fi) {
   (void)path;
-  (void)buf;
+  (void)tv;
+  (void)fi;
   return -EROFS;
 }
 
@@ -580,12 +591,11 @@ static int callback_open(const char *path, struct fuse_file_info *finfo) {
 
     if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0) {
       LOG("callback_open: open(%s) timed out. Trying next fs if any\n", ipath);
+      insert_to_hash_table(FSOkMap, Fss[i], 0);
 
+      // Do not join after timeout; joining can block forever on blocked NFS.
       pthread_cancel(thread_id);
-      pthread_join(thread_id, NULL);
-
-      free(args);
-      free(ipath);
+      pthread_detach(thread_id);
       continue;
     }
 
@@ -694,12 +704,11 @@ static int callback_read(const char *path, char *buf, size_t size, off_t offset,
 
     if (pthread_timedjoin_np(thread_id, NULL, &timeout) != 0) {
       LOG("callback_read: read(%s) timed out. Trying next fs if any\n", ipath);
+      insert_to_hash_table(FSOkMap, Fss[i], 0);
 
+      // Do not join after timeout; joining can block forever on blocked NFS.
       pthread_cancel(thread_id);
-      pthread_join(thread_id, NULL);
-
-      free(args);
-      free(ipath);
+      pthread_detach(thread_id);
       continue;
     }
 
@@ -931,7 +940,7 @@ struct fuse_operations callback_oper = {
     .chmod = callback_chmod,
     .chown = callback_chown,
     .truncate = callback_truncate,
-    .utime = callback_utime,
+    .utimens = callback_utimens,
     .open = callback_open,
     .read = callback_read,
     .write = callback_write,
@@ -1033,16 +1042,14 @@ void *check_if_filesystem_blocks(void *fsno) {
         timed_out_last_iteration[fs_index]++;
         LOG("Call to opendir(%s) timed out (%d times since last success)\n",
             Fss[fs_index], timed_out_last_iteration[fs_index]);
-
-        pthread_cancel(thread_ids[current_thread]);
-        pthread_join(thread_ids[current_thread], NULL);
-        thread_ids[current_thread] = 0;
-
-
-        free(slot_args[current_thread]);
-        slot_args[current_thread] = NULL;
-
         insert_to_hash_table(FSOkMap, Fss[fs_index], 0);
+
+        // Keep probing thread in-flight and retry timed join on a later loop
+        // iteration to avoid blocking this monitor thread.
+        current_thread = (current_thread + 1) % MAX_THREADS;
+        pthread_testcancel();
+        sleep(1);
+        continue;
       } else {
         if (timed_out_last_iteration[fs_index]) {
           LOG("check_if_filesystem_blocks: %s back online after timed out\n",
@@ -1177,11 +1184,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-#if FUSE_VERSION >= 26
   fuse_main(args.argc, args.argv, &callback_oper, NULL);
-#else
-  fuse_main(args.argc, args.argv, &callback_oper);
-#endif
 
   /* Cleanup on exit (typically never reached) */
   for (long t = 0; t < Fscount; t++) {
