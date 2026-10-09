@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 
 ExecStartPre=-sh -c 'umount -l /lustre/storeAB 2>&1 > /dev/null || true'
-ExecStart=/usr/bin/haread-fs /lustre/metproductionB,/lustre/storeB,/lustre/metproductionA,/lustre/storeA /lustre/lustreAB/  -f -o allow_other -f -o allow_other
+ExecStart=/usr/bin/haread-fs /lustre/storeB,/lustre/storeA /lustre/storeAB -f -o allow_other
 
 Restart=on-failure
 
